@@ -23,6 +23,14 @@ def load_credentials(filename='spotify_cred.json'):
         creds = json.load(cred_file)
     return creds['client_ID'], creds['client_secret']
 
+# Load credentials from the JSON file
+def load_credentials_postgres(filename='postgres_cred.json'):
+    with open(filename, 'r') as cred_file:
+        creds_postgres = json.load(cred_file)
+
+   # print (creds_postgres['host'], creds_postgres['port'],  creds_postgres['database'], creds_postgres['user'], creds_postgres['password'])
+    return creds_postgres['host'], creds_postgres['port'],  creds_postgres['database'], creds_postgres['user'], creds_postgres['password']
+
 def authenticate_spotify():
     client_id, client_secret = load_credentials()
     credentials = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
@@ -107,8 +115,11 @@ def get_top_tracks(sp, genre):
 def download_weekly_genre_playlist(genres):
     sp = authenticate_spotify()
     
+    # Load PostgreSQL credentials
+    postgres_host, postgres_port, postgres_db, postgres_user, postgres_password = load_credentials_postgres()
+
     # Connect to the database
-    conn = psycopg2.connect(host="100.72.70.102", port="5432", database="wizecosm_NAS", user="dr0ant", password="°889")
+    conn = psycopg2.connect(host=postgres_host, port=postgres_port, database=postgres_db, user=postgres_user, password=postgres_password)
     cur = conn.cursor()
 
     # Get current date and week number
@@ -143,13 +154,14 @@ def download_weekly_genre_playlist(genres):
 
 
 
+#print(load_credentials_postgres(filename='postgres_cred.json'))
 
 
 
 
 
 
-
+download_weekly_genre_playlist(['pop', 'rock', 'hip-hop'])
 
 
 
