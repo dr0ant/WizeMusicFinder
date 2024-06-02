@@ -2,3 +2,7 @@ spotipy
 datetime
 requests
 psycopg2
+wget
+tqdm
+logging
+futures

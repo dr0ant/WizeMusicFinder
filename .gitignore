@@ -1,2 +1,3 @@
 spotify_cred.json
 WizeMusicFinder/postgres_cred.json
+WizeMusicFinder/limits_spotify_api.py

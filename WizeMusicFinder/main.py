@@ -7,6 +7,10 @@ import requests
 import os
 import psycopg2
 from psycopg2 import sql
+import wget
+from tqdm import tqdm
+import logging
+import concurrent.futures
 
 
 
@@ -16,6 +20,8 @@ params = {
     'offset': 5,
 }
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load credentials from the JSON file
 def load_credentials(filename='spotify_cred.json'):
@@ -32,10 +38,21 @@ def load_credentials_postgres(filename='postgres_cred.json'):
     return creds_postgres['host'], creds_postgres['port'],  creds_postgres['database'], creds_postgres['user'], creds_postgres['password']
 
 def authenticate_spotify():
+    logging.info("Authenticating Spotify...")
+    
+    # Load Spotify credentials
     client_id, client_secret = load_credentials()
+    
+    logging.info("Loaded Spotify credentials.")
+    
+    # Authenticate with Spotify API
     credentials = SpotifyClientCredentials(client_id=client_id, client_secret=client_secret)
     sp = spotipy.Spotify(client_credentials_manager=credentials)
+    
+    logging.info("Successfully authenticated with Spotify.")
+    
     return sp
+
 
 
 
@@ -71,67 +88,129 @@ def get_genres():
 
 
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def fetch_album_tracks(sp, album_id):
+    logging.info(f"Fetching album tracks for album ID: {album_id}")
+    return sp.album_tracks(album_id)
+
+def fetch_track_details(sp, track_id):
+    logging.info(f"Fetching track details for track ID: {track_id}")
+    return sp.track(track_id)
+
+def fetch_artist_details(artist_id):
+    logging.info(f"Fetching artist details for artist ID: {artist_id}")
+    
+    # Authenticate with Spotify to get access token
+    sp = authenticate_spotify()
+    
+    # Define the API endpoint
+    url = f"https://api.spotify.com/v1/artists/{artist_id}"
+    
+    # Make the GET request to the API
+    response = sp._get(url)  # Using internal method to access authenticated request
+    
+    # Check if the request was successful
+    if response.status_code == 200:
+        artist_details = response.json()
+        return artist_details
+    else:
+        logging.error(f"Failed to fetch artist details for artist ID {artist_id}. Status code: {response.status_code}")
+        return None
+
+
 def get_top_tracks(sp, genre):
+    logging.info(f"Starting to get top tracks for genre: {genre}")
+
     # Get current date
     current_date = datetime.now().date()
+    logging.info(f"Current date: {current_date}")
     
     # Calculate the date three months ago
-    three_months_ago = current_date - timedelta(days=3 * 30)
+    three_months_ago = current_date - timedelta(days=90)
+    logging.info(f"Date three months ago: {three_months_ago}")
     
     # Make the API call to retrieve new releases
+    logging.info("Retrieving new releases...")
     new_releases = sp.new_releases(country='US', limit=50, offset=0)
-    
+
     top_tracks = []
+    artist_genre_cache = {}
     
-    # Filter and process each album in the new releases
-    for album in new_releases['albums']['items']:
-        album_tracks = sp.album_tracks(album['id'])
-        for track in album_tracks['items']:
-            # Get track details
-            track_details = sp.track(track['id'])
-            # Check if the track's release date is within the last three months
-            release_date = datetime.strptime(track_details['album']['release_date'], '%Y-%m-%d').date()
-            if release_date >= three_months_ago:
-                # Check if the track's genre matches the specified genre
-                track_genres = [g.lower() for g in sp.artist(track_details['artists'][0]['id'])['genres']]
-                if genre.lower() in track_genres:
-                    song_info = {
-                        'name': track_details['name'],
-                        'artists': ', '.join([artist['name'] for artist in track_details['artists']]),
-                        'album': track_details['album']['name'],
-                        'release_date': track_details['album']['release_date'],
-                        'popularity': track_details['popularity'],
-                        'preview_url': track_details['preview_url'],
-                    }
-                    top_tracks.append(song_info)
+    # Filter albums by release date
+    recent_albums = [album for album in new_releases['albums']['items'] 
+                     if datetime.strptime(album['release_date'], '%Y-%m-%d').date() >= three_months_ago]
     
+    logging.info(f"Filtered {len(recent_albums)} recent albums.")
+    
+    # Fetch artist genres sequentially
+    for album in recent_albums:
+        artist_id = album['artists'][0]['id']
+        if artist_id not in artist_genre_cache:
+            print(artist_genre_cache)
+            artist_details = fetch_artist_details(sp, artist_id)
+            artist_genre_cache[artist_id] = [g.lower() for g in artist_details['genres']]
+    
+    logging.info(f"Fetched genres for {len(artist_genre_cache)} artists.")
+    
+    # Filter albums by genre and collect tracks
+    for album in recent_albums:
+        artist_id = album['artists'][0]['id']
+        if genre.lower() in artist_genre_cache.get(artist_id, []):
+            logging.info(f"Fetching tracks for album: {album['name']} (ID: {album['id']})")
+            album_tracks = sp.album_tracks(album['id'])
+            for track in album_tracks['items']:
+                song_info = {
+                    'name': track['name'],
+                    'artists': ', '.join([artist['name'] for artist in track['artists']]),
+                    'album': album['name'],
+                    'release_date': album['release_date'],
+                    'popularity': track['popularity'],
+                    'preview_url': track['preview_url'],
+                }
+                top_tracks.append(song_info)
+                logging.info(f"Added track: {track['name']} by {track['artists'][0]['name']}")
+
     # Sort the tracks by popularity in descending order
     top_tracks.sort(key=lambda x: x['popularity'], reverse=True)
+    logging.info("Tracks sorted by popularity.")
     
     # Return the top 20 tracks
-    return top_tracks[:20]
+    top_20_tracks = top_tracks[:20]
+    logging.info(f"Returning top {len(top_20_tracks)} tracks.")
+    
+    return top_20_tracks
 
 
 def download_weekly_genre_playlist(genres):
     sp = authenticate_spotify()
     
     # Load PostgreSQL credentials
+    print("Loading PostgreSQL credentials...")
     postgres_host, postgres_port, postgres_db, postgres_user, postgres_password = load_credentials_postgres()
-
+    print("PostgreSQL credentials loaded.")
+    
     # Connect to the database
+    print("Connecting to the database...")
     conn = psycopg2.connect(host=postgres_host, port=postgres_port, database=postgres_db, user=postgres_user, password=postgres_password)
     cur = conn.cursor()
+    print("Connected to the database.")
 
     # Get current date and week number
     current_date = datetime.now()
     week_number = current_date.isocalendar()[1]
     
     for genre in genres:
+        print(f"Processing genre: {genre}")
+        
         # Create folder for the playlist
         folder_name = f"Playlist_week_{week_number}_{genre}"
         os.makedirs(folder_name, exist_ok=True)
+        print(f"Created folder: {folder_name}")
         
         # Get top tracks for the genre
+        print(f"Retrieving top tracks for genre: {genre}")
         top_tracks = get_top_tracks(sp, genre)
         
         for track in top_tracks:
@@ -139,17 +218,23 @@ def download_weekly_genre_playlist(genres):
             insert_query = sql.SQL("INSERT INTO wizeplaylist.weekly_playlist (name, album, release_date, popularity, artist, week_nb, genre) VALUES (%s, %s, %s, %s, %s, %s, %s)")
             cur.execute(insert_query, (track['name'], track['album'], track['release_date'], track['popularity'], track['artists'], week_number, genre))
             conn.commit()
+            print(f"Inserted track into database: {track['name']}")
 
             # Download the track
             track_name = track['name'] + '.mp3'
             track_url = track['preview_url']
             if track_url:
                 track_path = os.path.join(folder_name, track_name)
-                os.system(f"wget -O '{track_path}' '{track_url}'")
+                print(f"Downloading track: {track['name']}")
+                wget.download(track_url, track_path)
+                print(f"Downloaded track to: {track_path}")
 
     # Close the database connection
+    print("Closing database connection...")
     cur.close()
     conn.close()
+    print("Database connection closed.")
+
 
 
 
@@ -161,7 +246,9 @@ def download_weekly_genre_playlist(genres):
 
 
 
-download_weekly_genre_playlist(['pop', 'rock', 'hip-hop'])
+#download_weekly_genre_playlist(['pop'])
+
+fetch_artist_details('5slpk6nu2IwwKx0EHe3GcL')
 
 
 
