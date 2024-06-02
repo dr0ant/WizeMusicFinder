@@ -1,1 +1,4 @@
 spotipy
+datetime
+requests
+psycopg2
