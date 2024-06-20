@@ -110,14 +110,12 @@ def fetch_artist_details(artist_id):
     
     # Make the GET request to the API
     response = sp._get(url)  # Using internal method to access authenticated request
-    
+    #print(response)
     # Check if the request was successful
-    if response.status_code == 200:
-        artist_details = response.json()
-        return artist_details
-    else:
-        logging.error(f"Failed to fetch artist details for artist ID {artist_id}. Status code: {response.status_code}")
-        return None
+
+    artist_details = response
+    return artist_details
+    
 
 
 def get_top_tracks(sp, genre):
@@ -248,7 +246,7 @@ def download_weekly_genre_playlist(genres):
 
 #download_weekly_genre_playlist(['pop'])
 
-fetch_artist_details('5slpk6nu2IwwKx0EHe3GcL')
+#fetch_artist_details('5slpk6nu2IwwKx0EHe3GcL')
 
 
 
