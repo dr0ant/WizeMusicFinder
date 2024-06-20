@@ -122,6 +122,35 @@ def get_top_tracks(sp, genre):
     return top_tracks
 
 
+def download_track(track_url, folder_path):
+    try:
+        wget.download(track_url, out=folder_path)
+        return True
+    except Exception as e:
+        logging.error(f"Error downloading track: {str(e)}")
+        return False
+
+
+def download_top_tracks(top_tracks, genre, week_number):
+    folder_name = f"Playlist_week_{week_number}_{genre}"
+    os.makedirs(folder_name, exist_ok=True)
+    logging.info(f"Created folder: {folder_name}")
+
+    for idx, track in enumerate(top_tracks, start=1):
+        track_name = f"{idx}. {track['name']} - {track['artists']}.mp3"
+        track_url = track['preview_url']
+        if track_url:
+            track_path = os.path.join(folder_name, track_name)
+            logging.info(f"Downloading track: {track['name']} by {track['artists']}")
+            success = download_track(track_url, track_path)
+            if success:
+                logging.info(f"Downloaded track to: {track_path}")
+            else:
+                logging.warning(f"Failed to download track: {track['name']} by {track['artists']}")
+        else:
+            logging.warning(f"No preview URL available for track: {track['name']} by {track['artists']}")
+
+
 def download_weekly_genre_playlist(genres):
     sp = authenticate_spotify()
 
@@ -138,17 +167,16 @@ def download_weekly_genre_playlist(genres):
     week_number = current_date.isocalendar()[1]
 
     for genre in genres:
-        print(f"Processing genre: {genre}")
-
-        # Create folder for the playlist
-        folder_name = f"Playlist_week_{week_number}_{genre}"
-        os.makedirs(folder_name, exist_ok=True)
-        print(f"Created folder: {folder_name}")
+        logging.info(f"Processing genre: {genre}")
 
         # Get top tracks for the genre
-        print(f"Retrieving top tracks for genre: {genre}")
+        logging.info(f"Retrieving top tracks for genre: {genre}")
         top_tracks = get_top_tracks(sp, genre)
 
+        # Download top tracks
+        download_top_tracks(top_tracks, genre, week_number)
+
+        # Insert tracks into database
         for track in top_tracks:
             # Insert track information into the database
             insert_query = sql.SQL(
@@ -157,41 +185,20 @@ def download_weekly_genre_playlist(genres):
                 track['name'], track['album'], track['release_date'], track['duration_ms'], track['popularity'],
                 track['artists'], week_number, genre))
             conn.commit()
-            print(f"Inserted track into database: {track['name']}")
-
-            # Download the track
-            track_name = track['name'] + '.mp3'
-            track_url = track['preview_url']
-            if track_url:
-                track_path = os.path.join(folder_name, track_name)
-                print(f"Downloading track: {track['name']}")
-                wget.download(track_url, track_path)
-                print(f"Downloaded track to: {track_path}")
+            logging.info(f"Inserted track into database: {track['name']}")
 
     # Close the database connection
     cur.close()
     conn.close()
-    print("Database connection closed.")
+    logging.info("Database connection closed.")
 
 
 def main():
     genre = 'pop'
     sp = authenticate_spotify()
-    print(f"Most Listened Songs in the {genre.capitalize()} Genre Released in the Last 3 Months on Spotify:")
-    print(genre)
-    top_songs = get_top_tracks(sp=sp, genre=genre)
-    if not top_songs:
-        print(
-            f"No songs found in the {genre.capitalize()} genre released in the last 3 months or there was an error.")
-    else:
-        for idx, song in enumerate(top_songs, start=1):
-            print(f"{idx}. {song['name']} by {song['artists']}")
-            print(f"   Album: {song['album']}")
-            print(f"   Release Date: {song['release_date']}")
-            print(f"   Duration (ms): {song['duration_ms']}")
-            print(f"   Popularity: {song['popularity']}")
-            print(f"   Preview URL: {song['preview_url']}")
-            print()
+    logging.info(f"Most Listened Songs in the {genre.capitalize()} Genre Released in the Last 3 Months on Spotify:")
+    logging.info(genre)
+    download_weekly_genre_playlist([genre])
 
 
 if __name__ == '__main__':
