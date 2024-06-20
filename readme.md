@@ -17,7 +17,7 @@ This Python script interacts with the Spotify API to fetch and download top trac
 - `psycopg2` library (`pip install psycopg2`)
 - `wget` command-line utility (if not installed, download from [eternallybored.org](https://eternallybored.org/misc/wget/))
 
-## Workflow and Database Schema
+## Workflow
 
 ```mermaid
 graph TD;
@@ -35,14 +35,3 @@ graph TD;
     D -- No --> C
     C -- No --> B
     B --> L[End]
-
-    A[Start] --> M[weekly_playlist]
-    M --> id int
-    M --> name varchar(255)
-    M --> album varchar(255)
-    M --> release_date date
-    M --> duration_ms int
-    M --> popularity int
-    M --> artist varchar(255)
-    M --> week_nb int
-    M --> genre varchar(50)
