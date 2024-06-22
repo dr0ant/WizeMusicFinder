@@ -3,3 +3,4 @@ WizeMusicFinder/postgres_cred.json
 WizeMusicFinder/limits_spotify_api.py
 WizeMusicFinder/Playlist_week*/*
 .cache
+/venv

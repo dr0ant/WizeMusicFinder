@@ -6,9 +6,8 @@ import pprint
 import os
 import psycopg2
 from psycopg2 import sql
-import wget
 import logging
-
+import subprocess
 
 # Adjust the parameters
 params = {
@@ -110,7 +109,7 @@ def get_top_tracks(sp, genre):
                     'release_date': album['release_date'],
                     'duration_ms': track_details['duration_ms'],
                     'popularity': track_details['popularity'],
-                    'preview_url': track_details['preview_url'],
+                    'track_id': track_details['id'],
                 }
                 top_tracks.append(song_info)
                 logging.info(f"Added track: {track_details['name']} by {track_details['artists'][0]['name']}")
@@ -122,9 +121,10 @@ def get_top_tracks(sp, genre):
     return top_tracks
 
 
-def download_track(track_url, folder_path):
+def download_track(track_id, folder_path):
     try:
-        wget.download(track_url, out=folder_path)
+        # Use spotdl to download the track
+        subprocess.run(['spotdl', 'spotify:track:' + track_id, '--output', folder_path], check=True)
         return True
     except Exception as e:
         logging.error(f"Error downloading track: {str(e)}")
@@ -138,17 +138,13 @@ def download_top_tracks(top_tracks, genre, week_number):
 
     for idx, track in enumerate(top_tracks, start=1):
         track_name = f"{idx}. {track['name']} - {track['artists']}.mp3"
-        track_url = track['preview_url']
-        if track_url:
-            track_path = os.path.join(folder_name, track_name)
-            logging.info(f"Downloading track: {track['name']} by {track['artists']}")
-            success = download_track(track_url, track_path)
-            if success:
-                logging.info(f"Downloaded track to: {track_path}")
-            else:
-                logging.warning(f"Failed to download track: {track['name']} by {track['artists']}")
+        track_id = track['track_id']
+        logging.info(f"Downloading track: {track['name']} by {track['artists']}")
+        success = download_track(track_id, folder_name)
+        if success:
+            logging.info(f"Downloaded track to: {folder_name}")
         else:
-            logging.warning(f"No preview URL available for track: {track['name']} by {track['artists']}")
+            logging.warning(f"Failed to download track: {track['name']} by {track['artists']}")
 
 
 def download_weekly_genre_playlist(genres):

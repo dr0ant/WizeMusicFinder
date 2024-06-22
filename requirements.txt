@@ -6,3 +6,4 @@ wget
 tqdm
 logging
 futures
+spotdl
